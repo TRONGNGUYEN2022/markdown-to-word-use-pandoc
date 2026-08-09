@@ -4,65 +4,48 @@ import os
 import tempfile
 import shutil
 
-# Cấu hình trang
-st.set_page_config(page_title="Pandoc Converter Pro", layout="centered")
-st.title("📝 Markdown to Word (Fix Lỗi Ảnh)")
+st.title("Pandoc Converter (Online Ready)")
 
-# 1. Thư mục lưu tạm trên server
-UPLOAD_DIR = "server_images"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-uploaded_md = st.file_uploader("Chọn file Markdown (.md)", type=["md"])
-uploaded_images = st.file_uploader("Chọn file ảnh", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
-
-# Tự động lưu ảnh vào server
-if uploaded_images:
-    for img in uploaded_images:
-        with open(os.path.join(UPLOAD_DIR, img.name), "wb") as f:
-            f.write(img.getbuffer())
+uploaded_md = st.file_uploader("Upload file .md", type=["md"])
+uploaded_images = st.file_uploader("Upload ảnh (chọn tất cả ảnh cùng lúc)", type=["png", "jpg", "jpeg"], accept_multiple_files=True)
 
 if st.button("Chuyển đổi sang Word"):
-    if uploaded_md:
-        with st.spinner("Đang chuyển đổi..."):
+    if uploaded_md and uploaded_images:
+        with st.spinner("Đang xử lý..."):
+            # 1. Tạo thư mục tạm
             with tempfile.TemporaryDirectory() as tmp_dir:
-                # 1. Copy MD và Ảnh vào thư mục làm việc của Pandoc
+                # 2. Copy file MD vào tmp_dir
                 md_path = os.path.join(tmp_dir, uploaded_md.name)
                 with open(md_path, "wb") as f:
                     f.write(uploaded_md.getvalue())
                 
-                for img_name in os.listdir(UPLOAD_DIR):
-                    shutil.copy(os.path.join(UPLOAD_DIR, img_name), os.path.join(tmp_dir, img_name))
+                # 3. Copy tất cả ảnh vào tmp_dir
+                for img in uploaded_images:
+                    img_path = os.path.join(tmp_dir, img.name)
+                    with open(img_path, "wb") as f:
+                        f.write(img.getbuffer())
                 
-                # DEBUG: Kiểm tra xem ảnh đã vào chưa
-                st.write("---")
-                st.write("Files có trong thư mục xử lý (tmp_dir):", os.listdir(tmp_dir))
+                # 4. GHI NHỚ: Đổi thư mục làm việc của Python vào tmp_dir
+                # Đây là bước quan trọng nhất để Pandoc thấy ảnh nằm cùng chỗ với file md
+                original_dir = os.getcwd()
+                os.chdir(tmp_dir)
                 
-                output_docx = os.path.join(tmp_dir, "output.docx")
+                output_docx = "output.docx"
                 
                 try:
-                    # Chạy Pandoc với tham số ép buộc nhúng media
-                    # --extract-media=. giúp Pandoc ưu tiên tìm file trong thư mục hiện tại
-                    pypandoc.convert_file(
-                        md_path, 
-                        'docx', 
-                        outputfile=output_docx, 
-                        extra_args=['--extract-media=.'] 
-                    )
+                    # 5. Gọi Pandoc (lúc này nó đang đứng trong tmp_dir)
+                    pypandoc.convert_file(uploaded_md.name, 'docx', outputfile=output_docx)
                     
                     if os.path.exists(output_docx):
                         with open(output_docx, "rb") as f:
                             st.download_button("📥 Tải kết quả", data=f, file_name="Ket_Qua.docx")
-                        st.success("Xử lý thành công!")
+                        st.success("Chuyển đổi thành công!")
                     else:
-                        st.error("Pandoc không tạo được file Word.")
-                        
+                        st.error("Không tạo được file Word.")
                 except Exception as e:
-                    st.error(f"Lỗi hệ thống Pandoc: {str(e)}")
+                    st.error(f"Lỗi Pandoc: {e}")
+                finally:
+                    # Quay về thư mục cũ
+                    os.chdir(original_dir)
     else:
-        st.warning("Vui lòng tải file .md")
-
-# Nút dọn dẹp
-if st.button("Dọn dẹp ảnh trên server"):
-    shutil.rmtree(UPLOAD_DIR)
-    os.makedirs(UPLOAD_DIR)
-    st.rerun()
+        st.warning("Vui lòng tải lên file .md và các file ảnh liên quan.")
